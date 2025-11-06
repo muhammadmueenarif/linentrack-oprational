@@ -1,0 +1,10 @@
+{
+  "/_not-found/page": "app/_not-found/page.js",
+  "/Admin/Cleaning/page": "app/Admin/Cleaning/page.js",
+  "/Admin/Ironing/page": "app/Admin/Ironing/page.js",
+  "/Admin/Operational/page": "app/Admin/Operational/page.js",
+  "/Admin/Ready/page": "app/Admin/Ready/page.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js",
+  "/Login/page": "app/Login/page.js"
+}

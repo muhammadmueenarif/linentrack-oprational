@@ -1,0 +1,121 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Import Poppins font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@100;200;300;400;500;600;700;800;900&display=swap');
+
+*{
+  font-family: 'Poppins', sans-serif;
+  font-size: 12.91px;
+  box-sizing: border-box;
+}
+
+html, body {
+  font-family: 'Poppins', sans-serif;
+  font-size: 12.91px;
+  font-weight: 400;
+  line-height: 1.5;
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  overflow-x: hidden;
+  position: relative;
+}
+
+#__next {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  position: relative;
+}
+
+/* Ensure all text elements use Poppins */
+h1, h2, h3, h4, h5, h6, p, span, div, a, button, input, textarea, select, label {
+  font-family: 'Poppins', sans-serif;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+}
+
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 14px;
+  width: 14px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #2196F3;
+}
+
+input:checked + .slider:before {
+  transform: translateX(14px);
+}
+
+select{
+  background-color: white;
+}
+
+
+/* Add this to your global CSS file or in a <style> tag */
+.scrollable-div {
+  scrollbar-width: 1px; /* For Firefox */
+}
+
+.scrollable-div::-webkit-scrollbar {
+  width: 2px; /* Change this to your desired width */
+  border-radius: 10px;
+  display: none;
+}
+
+.scrollable-div::-webkit-scrollbar-track {
+  background: #F0F0FF; /* Background of the scrollbar track */
+}
+
+.scrollable-div::-webkit-scrollbar-thumb {
+  background-color: #252525; /* Color of the scrollbar handle */
+  border-radius: 10px; /* Round the edges of the handle */
+}
+
+.scrollable-div::-webkit-scrollbar-thumb:hover {
+  background-color: #555; /* Darker color on hover */
+}
+
+
+
