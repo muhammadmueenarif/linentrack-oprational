@@ -8,7 +8,7 @@ import { db } from '../../config';
 import { collection, addDoc, serverTimestamp, query, where, onSnapshot, orderBy, getDocs, updateDoc, doc, limit, getDoc } from 'firebase/firestore';
 import { orderStatus } from '../../enum/status';
 import { useRouter } from 'next/navigation';
-import { useClock } from '../../Common/Components/ClockContext';
+import { useClockSafe } from '../../Common/Components/ClockContext';
 
 // Define the SVG components for each icon
 const SearchIcon = () => (
@@ -106,6 +106,39 @@ const iconComponents = {
   settings: AdminIcon,
 };
 
+// Helper component for individual menu item
+const MenuItem = ({ item, pathname }) => {
+  const [enabled, setEnabled] = React.useState(true);
+  React.useEffect(() => {
+    (async () => {
+      const ok = await hasPermission(item.permKey);
+      setEnabled(ok);
+    })();
+  }, [item.permKey]);
+
+  return (
+    <li className="relative">
+      {enabled ? (
+        <Link
+          href={item.path}
+          className={`cursor-pointer hover:text-yellow-500 transition-colors duration-200 ${pathname === item.path ? 'text-yellow-500 font-bold' : 'text-white'} inline-block`}
+          style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 500, fontSize: '14.0625px', lineHeight: '21px' }}
+        >
+          {item.name}
+        </Link>
+      ) : (
+        <div className="flex items-center text-gray-400 cursor-not-allowed">
+          {item.name}
+          <FaLock className="ml-1 text-xs" />
+          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
+            You do not have permission
+          </div>
+        </div>
+      )}
+    </li>
+  );
+};
+
 // Helper component for Navigation Menu
 const NavigationMenu = ({ subscriptionData }) => {
   const pathname = usePathname();
@@ -127,36 +160,9 @@ const NavigationMenu = ({ subscriptionData }) => {
   return (
     <div className="flex flex-1 justify-center">
       <ul className="flex whitespace-nowrap gap-5">
-        {menuItems.map((item) => {
-          const [enabled, setEnabled] = React.useState(true);
-          React.useEffect(() => {
-            (async () => {
-              const ok = await hasPermission(item.permKey);
-              setEnabled(ok);
-            })();
-          }, [item.permKey]);
-          return (
-            <li key={item.path} className="relative">
-              {enabled ? (
-                <Link
-                  href={item.path}
-                  className={`cursor-pointer hover:text-yellow-500 transition-colors duration-200 ${pathname === item.path ? 'text-yellow-500 font-bold' : 'text-white'} inline-block`}
-                  style={{ fontFamily: 'Poppins, sans-serif', fontWeight: 500, fontSize: '14.0625px', lineHeight: '21px' }}
-                >
-                  {item.name}
-                </Link>
-              ) : (
-                <div className="flex items-center text-gray-400 cursor-not-allowed">
-                  {item.name}
-                  <FaLock className="ml-1 text-xs" />
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 hover:opacity-100 transition-opacity whitespace-nowrap">
-                    You do not have permission
-                  </div>
-                </div>
-              )}
-            </li>
-          );
-        })}
+        {menuItems.map((item) => (
+          <MenuItem key={item.path} item={item} pathname={pathname} />
+        ))}
       </ul>
     </div>
   );
@@ -322,13 +328,8 @@ const Navbar = ({ subscriptionData }) => {
   const passwordInputRefs = useRef([]);
   const router = useRouter();
 
-  // Try to get clock context, but don't fail if not available
-  let clockContext = null;
-  try {
-    clockContext = useClock();
-  } catch (error) {
-    // Clock context not available, continue without it
-  }
+  // Get clock context - safely returns null if ClockProvider is not in the tree
+  const clockContext = useClockSafe();
 
   const menuRef = useRef(null);
   const profileRef = useRef(null);

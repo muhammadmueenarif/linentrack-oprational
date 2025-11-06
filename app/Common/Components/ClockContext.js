@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot, orderBy, limit } from 'firebase/firestore';
 import { db } from '../../config';
 
-const ClockContext = createContext();
+export const ClockContext = createContext();
 
 export const useClock = () => {
   const context = useContext(ClockContext);
@@ -11,6 +11,11 @@ export const useClock = () => {
     throw new Error('useClock must be used within a ClockProvider');
   }
   return context;
+};
+
+// Safe version that returns null if context is not available
+export const useClockSafe = () => {
+  return useContext(ClockContext);
 };
 
 export const ClockProvider = ({ children }) => {
