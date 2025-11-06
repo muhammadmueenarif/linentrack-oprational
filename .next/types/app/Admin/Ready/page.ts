@@ -1,4 +1,4 @@
-// File: /home/sidra/Desktop/linentrack_operations_app/app/Admin/Ready/page.js
+// File: /Users/usman/Linentrack/linentrack-oprational/app/Admin/Ready/page.js
 import * as entry from '../../../../../app/Admin/Ready/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 
