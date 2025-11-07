@@ -2,9 +2,11 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-toastify';
+import Image from 'next/image';
 import { db } from '../config'; // Assuming db config path is correct
 // Import necessary Firestore functions
-import { collection, query, where, getDocs, doc, getDoc, addDoc, Timestamp, limit } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, addDoc, Timestamp, limit, orderBy } from 'firebase/firestore';
+import { hasOperationsAccess } from '../enum/AccessMode';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,7 +17,7 @@ const Login = () => {
     password: ''
   });
   const [loading, setLoading] = useState(false);
-  const [loginType, setLoginType] = useState('Admin'); // State for selected tab: Admin, POS, Operations
+  const loginType = 'Operations'; // Operations is the only login type for this portal
   const [focusedField, setFocusedField] = useState(null); // Track which field is focused
 
   // Redirect if already logged in - Operations specific redirect
@@ -28,7 +30,7 @@ const Login = () => {
         try {
             const parsedData = JSON.parse(userData);
             if (parsedData.roleType === 'Staff' &&
-                (parsedData.accessMode === 'operations' || parsedData.accessMode === 'operation')) {
+                hasOperationsAccess(parsedData.accessMode)) {
               router.push('/');
             } else {
               router.push('/Login');
@@ -111,10 +113,9 @@ const Login = () => {
     let userData = null;
     let collectionName = '';
     let redirectPath = '';
-    let roleType = ''; // To distinguish between Admin (client) and Staff
+    let roleType = ''; // Staff role for Operations portal
     let selectedStoreId = null;
     let selectedStoreData = null;
-    let usedFallbackStaffAdmin = false;
 
     
     try {
@@ -150,73 +151,23 @@ const Login = () => {
 
       console.info('[Login] Attempt start', { loginType, email, rawEmailDifferent: rawEmail !== email });
 
-      // 1. Authenticate User and Determine Role (with Admin fallback)
-      if (loginType === 'Admin') {
-        collectionName = 'clients';
-        roleType = 'Admin';
-
-        // Primary: look in clients
-        {
-          const usersRef = collection(db, collectionName);
-          // Try lowercased email first
-          let querySnapshot = await getDocs(query(usersRef, where('email', '==', email)));
-          // Fallback: try raw input email (case-sensitive field)
-          if (querySnapshot.empty) {
-            console.debug('[Login] clients lookup with lowercased email returned empty. Trying raw email');
-            querySnapshot = await getDocs(query(usersRef, where('email', '==', rawEmail)));
-          }
-          if (!querySnapshot.empty) {
-            userDoc = querySnapshot.docs[0];
-            userData = userDoc.data();
-            console.info('[Login] Found Admin in clients', { userId: userDoc.id, email: userData?.email });
-          }
-        }
-
-        // Fallback: if not found as client admin, check storeStaff with accessMode Admin
-        if (!userDoc) {
-          const staffRef = collection(db, 'storeStaff');
-          // Try lowercased first, then raw
-          let staffSnap = await getDocs(query(staffRef, where('email', '==', email)));
-          if (staffSnap.empty) {
-            console.debug('[Login] storeStaff lookup with lowercased email returned empty. Trying raw email');
-            staffSnap = await getDocs(query(staffRef, where('email', '==', rawEmail)));
-          }
-          if (!staffSnap.empty) {
-            // Find first with accessMode 'admin' (case-insensitive)
-            const candidate = staffSnap.docs.find(d => (d.data()?.accessMode || '').toLowerCase() === 'admin');
-            if (candidate) {
-              userDoc = candidate;
-              userData = candidate.data();
-              collectionName = 'storeStaff';
-              roleType = 'Staff';
-              usedFallbackStaffAdmin = true;
-              console.info('[Login] Using fallback Admin from storeStaff', { userId: userDoc.id, email: userData?.email, accessMode: userData?.accessMode, storeId: userData?.storeId });
-            } else {
-              console.warn('[Login] storeStaff records found for email, but none with accessMode Admin');
-            }
-          } else {
-            console.warn('[Login] No records found in clients or storeStaff for provided email');
-          }
-        }
-
-        if (!userDoc) {
-          throw new Error(`Invalid credentials or user not found for ${loginType} role.`);
-        }
-      } else if (loginType === 'POS' || loginType === 'Operations') {
-        collectionName = 'storeStaff';
-        roleType = 'Staff';
-        const usersRef = collection(db, collectionName);
-        const q = query(usersRef, where('email', '==', email));
-        const querySnapshot = await getDocs(q);
-        if (querySnapshot.empty) {
-          throw new Error(`Invalid credentials or user not found for ${loginType} role.`);
-        }
-        userDoc = querySnapshot.docs[0];
-        userData = userDoc.data();
-        console.info('[Login] Found Staff for POS/Operations', { userId: userDoc.id, email: userData?.email, accessMode: userData?.accessMode, storeId: userData?.storeId });
-      } else {
-        throw new Error('Invalid login type selected');
+      // 1. Authenticate User - Operations only (Staff with accessMode 'operations' or 'operation')
+      collectionName = 'storeStaff';
+      roleType = 'Staff';
+      const usersRef = collection(db, collectionName);
+      // Try lowercased email first
+      let querySnapshot = await getDocs(query(usersRef, where('email', '==', email)));
+      // Fallback: try raw input email (case-sensitive field)
+      if (querySnapshot.empty) {
+        console.debug('[Login] storeStaff lookup with lowercased email returned empty. Trying raw email');
+        querySnapshot = await getDocs(query(usersRef, where('email', '==', rawEmail)));
       }
+      if (querySnapshot.empty) {
+        throw new Error(`Invalid credentials or user not found for ${loginType} role.`);
+      }
+      userDoc = querySnapshot.docs[0];
+      userData = userDoc.data();
+      console.info('[Login] Found Staff for Operations', { userId: userDoc.id, email: userData?.email, accessMode: userData?.accessMode, storeId: userData?.storeId });
 
       // --- Password Verification (INSECURE) ---
       const ensurePasswordMatchOrFallback = async () => {
@@ -228,43 +179,6 @@ const Login = () => {
         }
 
         console.warn('[Login] Password mismatch', { userId: userDoc.id, collectionName, hasStoredPassword: !!userData.password, storedPasswordLength: storedPassword.length, inputPasswordLength: password.length });
-
-        // If Admin login type and initial lookup was clients, try fallback to storeStaff admin with matching password
-        if (loginType === 'Admin' && collectionName === 'clients') {
-          try {
-            const staffRef = collection(db, 'storeStaff');
-            let staffSnap = await getDocs(query(staffRef, where('email', '==', email)));
-            if (staffSnap.empty) {
-              staffSnap = await getDocs(query(staffRef, where('email', '==', rawEmail)));
-            }
-            if (!staffSnap.empty) {
-              const candidate = staffSnap.docs.find(d => (d.data()?.accessMode || '').toLowerCase() === 'admin');
-              if (candidate) {
-                const candData = candidate.data();
-                const candPwd = candData.password != null ? String(candData.password) : '';
-                if (candPwd === password) {
-                  // Switch to fallback staff admin account
-                  userDoc = candidate;
-                  userData = candData;
-                  collectionName = 'storeStaff';
-                  roleType = 'Staff';
-                  usedFallbackStaffAdmin = true;
-                  console.info('[Login] Falling back to storeStaff Admin with matching password', { userId: userDoc.id, email: userData?.email, accessMode: userData?.accessMode });
-                  return true;
-                } else {
-                  console.warn('[Login] Fallback storeStaff Admin password mismatch');
-                }
-              } else {
-                console.warn('[Login] Fallback storeStaff Admin not found for email');
-              }
-            } else {
-              console.warn('[Login] No storeStaff records for email during fallback');
-            }
-          } catch (fbErr) {
-            console.error('[Login] Error during fallback staff admin lookup', fbErr);
-          }
-        }
-
         return false;
       };
 
@@ -274,57 +188,30 @@ const Login = () => {
       }
       // --- End Security Warning ---
 
-      // 2. Verify Access Mode (for Staff)
-      if (roleType === 'Staff') {
-        const requiredAccessMode = loginType === 'Admin' ? 'admin' : loginType.toLowerCase();
-        const userAccessMode = userData.accessMode?.toLowerCase();
-
-        if (!userAccessMode || userAccessMode !== requiredAccessMode) {
-           console.warn('[Login] Access mode check failed', { requiredAccessMode, userAccessMode, loginType, usedFallbackStaffAdmin });
-           throw new Error(`Login failed: You do not have permission to access the ${loginType} portal.`);
-        }
-        // Set redirect path based on verified access mode
-        if (requiredAccessMode === 'admin') redirectPath = '/Admin';
-        else if (requiredAccessMode === 'pos') redirectPath = '/Pos';
-        else if (requiredAccessMode === 'operations') redirectPath = '/Admin/Operational';
-        else throw new Error('Configuration error: Invalid redirect path for staff.');
-
-      } else { // Admin role
-        redirectPath = '/Admin'; // Default redirect for Admin
+      // 2. Verify Access Mode (must be 'Operations' for Operations portal - case-insensitive)
+      if (!hasOperationsAccess(userData.accessMode)) {
+         console.warn('[Login] Access mode check failed', { userAccessMode: userData.accessMode, loginType });
+         throw new Error(`Login failed: You do not have permission to access the Operations portal.`);
       }
-      console.info('[Login] Role resolved', { roleType, redirectPath, usedFallbackStaffAdmin });
+      // Set redirect path for Operations
+      redirectPath = '/Admin/Operational';
+      console.info('[Login] Role resolved', { roleType, redirectPath });
 
-      // 3. Fetch and Select Store Details
-      if (roleType === 'Admin') {
-        // Admin: Fetch all stores associated with this adminId and select the first one
-        const storesQuery = query(collection(db, 'stores'), where('adminId', '==', userDoc.id), limit(1));
-        const storesSnapshot = await getDocs(storesQuery);
-
-        if (storesSnapshot.empty) {
-            // Handle case where Admin has no stores assigned
-            throw new Error("Login failed: No stores are currently associated with this admin account.");
-        }
-        const firstStoreDoc = storesSnapshot.docs[0];
-        selectedStoreId = firstStoreDoc.id;
-        selectedStoreData = firstStoreDoc.data();
-        console.debug('[Login] Admin store selected', { selectedStoreId, storeName: selectedStoreData?.storeName });
-
-      } else { // Staff role
-        // Staff: Fetch the specific store assigned to the staff member
-        const staffStoreId = userData.storeId;
-        if (!staffStoreId) {
-            throw new Error("Login failed: Store assignment is missing for this staff account.");
-        }
-        const storeRef = doc(db, 'stores', staffStoreId);
-        const storeSnap = await getDoc(storeRef);
-
-        if (!storeSnap.exists()) {
-            throw new Error(`Login failed: Assigned store (ID: ${staffStoreId}) not found. Please contact support.`);
-        }
-        selectedStoreId = storeSnap.id;
-        selectedStoreData = storeSnap.data();
-        console.debug('[Login] Staff store resolved', { selectedStoreId, storeName: selectedStoreData?.storeName });
+      // 3. Fetch and Select Store Details (Staff role - Operations)
+      // Staff: Fetch the specific store assigned to the staff member
+      const staffStoreId = userData.storeId;
+      if (!staffStoreId) {
+          throw new Error("Login failed: Store assignment is missing for this staff account.");
       }
+      const storeRef = doc(db, 'stores', staffStoreId);
+      const storeSnap = await getDoc(storeRef);
+
+      if (!storeSnap.exists()) {
+          throw new Error(`Login failed: Assigned store (ID: ${staffStoreId}) not found. Please contact support.`);
+      }
+      selectedStoreId = storeSnap.id;
+      selectedStoreData = storeSnap.data();
+      console.debug('[Login] Staff store resolved', { selectedStoreId, storeName: selectedStoreData?.storeName });
 
       // Ensure we have store data before proceeding
       if (!selectedStoreId || !selectedStoreData) {
@@ -333,18 +220,6 @@ const Login = () => {
       console.info('[Login] Store details ready', { selectedStoreId, storeName: selectedStoreData?.storeName });
 
 
-      // --- (Optional) Demo account expiration check ---
-      if (collectionName === 'clients' && userData.userType === 'Demo' && userData.createdDate) {
-         // ... (keep existing demo check logic) ...
-         const creationDate = userData.createdDate.toDate ? userData.createdDate.toDate() : new Date(userData.createdDate);
-         const daysRemaining = parseInt(userData.days) || 0;
-         const currentDate = new Date();
-         const expirationDate = new Date(creationDate);
-         expirationDate.setDate(expirationDate.getDate() + daysRemaining);
-         if (currentDate > expirationDate) {
-           throw new Error('Your demo account has expired. Please contact support.');
-         }
-      }
 
 
       // 4. Prepare and Store Data in localStorage
@@ -354,20 +229,14 @@ const Login = () => {
         id: userDoc.id,
         email: userData.email,
         name: userData.name,
-        roleType: roleType, // 'Admin' or 'Staff'
+        roleType: roleType, // 'Staff' for Operations
         // Add selected store info directly for convenience
         selectedStoreId: selectedStoreId,
         selectedStoreName: selectedStoreData.storeName,
-        // Include role-specific fields
-        ...(roleType === 'Admin' && {
-            userType: userData.userType,
-            companyName: userData.companyName
-        }),
-        ...(roleType === 'Staff' && {
-            accessMode: userData.accessMode,
-            ownerAdminId: userData.userId,
-            // storeId and storeName are already included above
-        })
+        // Include role-specific fields (Staff/Operations)
+        accessMode: userData.accessMode,
+        ownerAdminId: userData.userId,
+        // storeId and storeName are already included above
       };
 
       localStorage.setItem('token', token);
@@ -387,8 +256,7 @@ const Login = () => {
       await trackLogin(userDoc.id, loginType, selectedStoreId, selectedStoreData.storeName);
 
       // 6. Auto Clock-In for Staff (if not already clocked in today and within shift hours)
-      if (roleType === 'Staff') {
-        try {
+      try {
           const todayKey = new Date().toLocaleDateString('en-GB');
           const now = new Date();
           const currentHour = now.getHours();
@@ -459,7 +327,6 @@ const Login = () => {
           console.warn('[Login] Auto clock-in failed', clockError);
           // Don't fail login if clock-in fails
         }
-      }
 
       // 7. Redirect
       toast.success(`Logged in successfully as ${loginType} for store: ${selectedStoreData.storeName}! Redirecting...`);
@@ -489,8 +356,6 @@ const Login = () => {
     }
   }     
 
-  const loginTypes = ['Admin', 'POS', 'Operations']; // Define the types
-
   return (
     <div className="min-h-screen flex flex-col md:flex-row ">
       {/* Left Side - Branding */}
@@ -505,30 +370,23 @@ const Login = () => {
 
       {/* Right Side - Login Form */}
       <div className="w-full md:w-1/2 flex items-center justify-center p-6 md:p-12 bg-gray-50">
-        <div className="w-full max-w-md bg-white p-8 lg:p-10 rounded-lg shadow-xl space-y-6">
+        <div className="w-full max-w-sm bg-white px-8 py-12 lg:px-10 lg:py-16 rounded-lg border border-gray-300 space-y-6">
+
+          {/* Logo */}
+          <div className="flex justify-center mb-6">
+            <Image
+              src="/Logo.png"
+              alt="LinenTrack Logo"
+              width={120}
+              height={120}
+              className="object-contain"
+              priority
+            />
+          </div>
 
           <h2 className="text-2xl font-semibold text-gray-800 text-center">
-              Login with your credentials
+              Login to your Operations
           </h2>
-
-          {/* Login Type Tabs */}
-          <div className="flex space-x-2 border-b border-gray-200 pb-3 justify-center">
-             {loginTypes.map((type) => (
-               <button
-                 key={type}
-                 type="button"
-                 onClick={() => setLoginType(type)}
-                 disabled={loading}
-                 className={`px-5 py-2 text-sm font-medium rounded-full transition-all duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-400 ${
-                   loginType === type
-                     ? 'bg-blue-600 text-white shadow-md scale-105'
-                     : 'text-gray-600 hover:bg-gray-100 border border-gray-300 hover:text-gray-800'
-                 } ${loading ? 'cursor-not-allowed opacity-70' : ''}`}
-               >
-                 {type}
-               </button>
-             ))}
-          </div>
 
           {/* Login Form */}
           <form onSubmit={handleSubmit} className="space-y-5 pt-2">
@@ -618,7 +476,7 @@ const Login = () => {
                   Signing In...
                 </div>
               ) : (
-                 `Sign In as ${loginType}`
+                 'Sign In'
               )}
             </button>
           </form>

@@ -15,6 +15,7 @@ import { Provider } from "react-redux";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import DotLoader from "./Common/Components/DotLoader";
+import { hasOperationsAccess } from "./enum/AccessMode";
 
 // Import react-toastify components and CSS
 import { ToastContainer } from 'react-toastify';
@@ -38,7 +39,7 @@ function AuthCheck({ children }) {
         try {
             const parsedData = JSON.parse(userData);
             if (parsedData.roleType === 'Staff' &&
-                (parsedData.accessMode === 'operations' || parsedData.accessMode === 'operation')) {
+                hasOperationsAccess(parsedData.accessMode)) {
               router.push('/');
             } else {
               router.push('/Login'); // Stay on login if not Operations staff
@@ -72,7 +73,7 @@ function AuthCheck({ children }) {
       try {
         const parsedData = JSON.parse(userData);
         if (parsedData.roleType === 'Staff' &&
-            (parsedData.accessMode === 'operations' || parsedData.accessMode === 'operation')) {
+            hasOperationsAccess(parsedData.accessMode)) {
           setIsLoading(false);
         } else {
           router.push('/Login'); // Redirect non-Operations users
